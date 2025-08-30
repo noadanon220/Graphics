@@ -118,18 +118,34 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="Agent.cpp" />
+    <ClCompile Include="AStar.cpp" />
     <ClCompile Include="Bullet.cpp" />
+    <ClCompile Include="CommanderNPC.cpp" />
     <ClCompile Include="Grenade.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="MedicNPC.cpp" />
+    <ClCompile Include="NPC.cpp" />
+    <ClCompile Include="State.cpp" />
+    <ClCompile Include="SupplierNPC.cpp" />
     <ClCompile Include="Team.cpp" />
+    <ClCompile Include="Visibility.cpp" />
+    <ClCompile Include="WarriorNPC.cpp" />
+    <ClCompile Include="WarriorStates.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Agent.h" />
+    <ClInclude Include="AStar.h" />
     <ClInclude Include="Bullet.h" />
+    <ClInclude Include="CommanderNPC.h" />
     <ClInclude Include="Definitions.h" />
     <ClInclude Include="Grenade.h" />
+    <ClInclude Include="MedicNPC.h" />
+    <ClInclude Include="NPC.h" />
+    <ClInclude Include="State.h" />
+    <ClInclude Include="SupplierNPC.h" />
     <ClInclude Include="Team.h" />
+    <ClInclude Include="Visibility.h" />
+    <ClInclude Include="WarriorNPC.h" />
+    <ClInclude Include="WarriorStates.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -1,32 +1,68 @@
+// Team.h
 #pragma once
 #include <vector>
 #include <memory>
+#include <utility>
 #include "Definitions.h"
-#include "Agent.h"
 
-// Owns and manages one team's squad (5 agents).
+class NPC;
+class CommanderNPC;
+class MedicNPC;
+class SupplierNPC;
+class WarriorNPC;
+
 class TeamSquad {
 public:
     explicit TeamSquad(Team id);
+    Team GetId() const;
 
-    // Build standard composition: 1C, 2W, 1M, 1S
     void CreateStandardSquad();
 
-    // Place all members randomly in a region [r0..r1]x[c0..c1] on SPACE cells
+    // spawn all team members inside a sub-rectangle of the map
     bool SpawnAllInRegion(int map[MSZ][MSZ], int r0, int r1, int c0, int c1);
 
-    // Draw all agents
-    void Draw() const;
+    // attach shared environment pointers to all members
+    void AttachEnvironmentToAll(int map[MSZ][MSZ], double smap[MSZ][MSZ]);
 
-    Team GetId() const { return teamId; }
+    // per-frame rendering & update
+    void Draw() const;
+    void Update(int map[MSZ][MSZ], double smap[MSZ][MSZ]);
+
+    // commander intel
+    void SetKnownEnemyDepots(const std::vector<std::pair<int, int>>& ammo,
+        const std::vector<std::pair<int, int>>& med);
+    void SetOwnDepots(const std::vector<std::pair<int, int>>& ammo,
+        const std::vector<std::pair<int, int>>& med);
+
+    // helpers / accessors
+    std::vector<WarriorNPC*> GetWarriors();
+    CommanderNPC* GetCommander();
+    MedicNPC* GetMedic();
+    SupplierNPC* GetSupplier();
+    bool GetFirstWarriorCell(int& outR, int& outC) const;
+
+private:
+    // spawning helpers
+    bool IsFreeForNPC(int map[MSZ][MSZ], int r, int c);
+    bool RandomFreeCellInRegion(int map[MSZ][MSZ], int r0, int r1, int c0, int c1,
+        int& outR, int& outC, int maxTries = 4000);
+
+    // commander “brain”
+    void RecomputeTeamVisibility(int map[MSZ][MSZ]);
+    std::pair<int, int> FindSafePositionBFS(int map[MSZ][MSZ], double smap[MSZ][MSZ],
+        int startR, int startC, int searchRadius = 14);
+    void CommanderBrainTick(int map[MSZ][MSZ], double smap[MSZ][MSZ]);
 
 private:
     Team teamId;
-    std::vector<std::unique_ptr<Agent>> members;
+    int  frameCounter = 0;
 
-    // Helpers
-    static bool IsFreeForAgent(int map[MSZ][MSZ], int r, int c);
-    static bool RandomFreeCellInRegion(int map[MSZ][MSZ],
-        int r0, int r1, int c0, int c1,
-        int& outR, int& outC, int maxTries = 2000);
+    std::vector<std::unique_ptr<NPC>> members;
+
+    // commander’s combined visibility
+    double commanderVis[MSZ][MSZ] = { 0.0 };
+
+    // known depots
+    std::vector<std::pair<int, int>> enemyAmmoDepots, enemyMedDepots;
+    std::vector<std::pair<int, int>> ownAmmoDepots, ownMedDepots;
 };

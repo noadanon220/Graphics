@@ -1,14 +1,28 @@
 #include "Agent.h"
 
 // Constructor
-Agent::Agent(Team t, Role r) : team(t), role(r) {}
+Agent::Agent(Team t, Role r) : team(t), role(r) {
+    static int agentCount = 0;
+    if (++agentCount % 10 == 0) { // Log every 10 agents
+        std::cout << "AGENT: created " << Glyph() << " for Team " << (team == TEAM_A ? "A" : "B") << std::endl;
+    }
+}
 
 void Agent::SetPosition(int row, int col) {
+    static int setPosCount = 0;
+    if (++setPosCount % 100 == 0) { // Log every 100 position sets
+        std::cout << "AGENT " << Glyph() << " (" << (team == TEAM_A ? "A" : "B") << "): SetPosition to (" << row << "," << col << ")" << std::endl;
+    }
     r = row;
     c = col;
 }
 
 char Agent::Glyph() const {
+    static int glyphCount = 0;
+    if (++glyphCount % 1000 == 0) { // Log every 1000 calls
+        std::cout << "AGENT: Glyph() called for role " << role << std::endl;
+    }
+    
     switch (role) {
     case CMD: return 'C';
     case WAR: return 'W';
@@ -19,12 +33,22 @@ char Agent::Glyph() const {
 }
 
 void Agent::ApplyTeamColor() const {
+    static int colorCount = 0;
+    if (++colorCount % 1000 == 0) { // Log every 1000 calls
+        std::cout << "AGENT " << Glyph() << " (" << (team == TEAM_A ? "A" : "B") << "): ApplyTeamColor called" << std::endl;
+    }
+    
     // Team A: red, Team B: blue
     if (team == TEAM_A) glColor3d(0.85, 0.15, 0.15);
     else                glColor3d(0.15, 0.35, 0.95);
 }
 
 void Agent::Draw() const {
+    static int drawCount = 0;
+    if (++drawCount % 500 == 0) { // Log every 500 renders
+        std::cout << "AGENT " << Glyph() << " (" << (team == TEAM_A ? "A" : "B") << "): Draw called at (" << r << "," << c << ")" << std::endl;
+    }
+    
     // Fill 1x1 cell by team color
     ApplyTeamColor();
     glBegin(GL_QUADS);
