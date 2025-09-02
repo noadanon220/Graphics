@@ -7,10 +7,24 @@
 #include <cstdlib>
 #include <iostream>
 
-// ===== WarriorIdle =====
-void WarriorIdle::OnEnter(NPC* np) {
-    // אפשר לשים כאן לוג או כלום
+// Local line-of-fire for picking legal firing positions
+static bool LineOfFireWS(int map[MSZ][MSZ], int r0, int c0, int r1, int c1) {
+    int dr = std::abs(r1 - r0), dc = std::abs(c1 - c0);
+    int sr = (r0 < r1) ? 1 : -1, sc = (c0 < c1) ? 1 : -1;
+    int err = dc - dr, r = r0, c = c0;
+    while (!(r == r1 && c == c1)) {
+        int e2 = 2 * err;
+        if (e2 > -dr) { err -= dr; c += sc; }
+        if (e2 < dc) { err += dc; r += sr; }
+        if (r == r1 && c == c1) break;
+        if (r < 0 || r >= MSZ || c < 0 || c >= MSZ) return false;
+        if (BlocksFire(map[r][c])) return false;
+    }
+    return true;
 }
+
+// ===== WarriorIdle =====
+void WarriorIdle::OnEnter(NPC* np) { (void)np; }
 void WarriorIdle::Transition(NPC* /*np*/) { /* stay idle */ }
 void WarriorIdle::OnExit(NPC* /*np*/) {}
 
@@ -51,18 +65,32 @@ void WarriorAttack::OnEnter(NPC* np) {
     auto tgt = w->GetMissionTarget();
     if (tgt.first == -1 || !w->EnvMap() || !w->EnvSMap()) { w->setIsMoving(false); return; }
 
-    int attackR = tgt.first, attackC = tgt.second;
-    for (int tries = 0; tries < 8; ++tries) {
-        int offR = rand() % 7 - 3;
-        int offC = rand() % 7 - 3;
-        int rr = tgt.first + offR, cc = tgt.second + offC;
-        if (rr >= 0 && rr < MSZ && cc >= 0 && cc < MSZ && !BlocksMovement(w->EnvMap()[rr][cc])) {
-            attackR = rr; attackC = cc; break;
+    int (*map)[MSZ] = w->EnvMap();
+    double (*smap)[MSZ] = w->EnvSMap();
+
+    int bestR = -1, bestC = -1;
+    double bestCost = 1e18;
+
+    // Search around target for a legal firing position
+    for (int rr = tgt.first - 12; rr <= tgt.first + 12; ++rr) {
+        for (int cc = tgt.second - 12; cc <= tgt.second + 12; ++cc) {
+            if (rr < 0 || rr >= MSZ || cc < 0 || cc >= MSZ) continue;
+            if (BlocksMovement(map[rr][cc])) continue;
+
+            int dist = std::abs(rr - tgt.first) + std::abs(cc - tgt.second);
+            if (dist > WarriorNPC::GetFireRange()) continue; // must be within rifle range
+
+            if (!LineOfFireWS(map, rr, cc, tgt.first, tgt.second)) continue;
+
+            double cost = smap[rr][cc]; // prefer safer cells
+            if (cost < bestCost) { bestCost = cost; bestR = rr; bestC = cc; }
         }
     }
-    auto path = RiskAwareAStar(w->EnvMap(), w->EnvSMap(),
-        w->Row(), w->Col(), attackR, attackC,
-        w->GetRiskWeight());
+
+    int destR = (bestR == -1 ? tgt.first : bestR);
+    int destC = (bestC == -1 ? tgt.second : bestC);
+
+    auto path = RiskAwareAStar(map, smap, w->Row(), w->Col(), destR, destC, w->GetRiskWeight());
     if (!path.empty()) { w->SetPathCells(path); w->setIsMoving(true); }
     else { w->setIsMoving(false); }
 }

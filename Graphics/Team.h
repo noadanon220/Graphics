@@ -18,36 +18,43 @@ public:
 
     void CreateStandardSquad();
 
-    // spawn all team members inside a sub-rectangle of the map
+    // Spawn all team members inside a sub-rectangle of the map
     bool SpawnAllInRegion(int map[MSZ][MSZ], int r0, int r1, int c0, int c1);
 
-    // attach shared environment pointers to all members
+    // Attach shared environment pointers to all members
     void AttachEnvironmentToAll(int map[MSZ][MSZ], double smap[MSZ][MSZ]);
 
-    // per-frame rendering & update
+    // Per-frame rendering & update
     void Draw() const;
     void Update(int map[MSZ][MSZ], double smap[MSZ][MSZ]);
 
-    // commander intel
+    // Commander intel
     void SetKnownEnemyDepots(const std::vector<std::pair<int, int>>& ammo,
         const std::vector<std::pair<int, int>>& med);
     void SetOwnDepots(const std::vector<std::pair<int, int>>& ammo,
         const std::vector<std::pair<int, int>>& med);
 
-    // helpers / accessors
+    // Helpers / accessors
     std::vector<WarriorNPC*> GetWarriors();
     CommanderNPC* GetCommander();
     MedicNPC* GetMedic();
     SupplierNPC* GetSupplier();
     bool GetFirstWarriorCell(int& outR, int& outC) const;
 
+    // New: opponent and combat/sight API
+    void SetOpponent(TeamSquad* op);
+    std::vector<std::pair<int, int>> GetAlivePositions() const;
+    void CollectSightings(int map[MSZ][MSZ]);
+    const std::vector<std::pair<int, int>>& GetSightings() const { return lastSightings; }
+    void ResolveCombat(int map[MSZ][MSZ], double smap[MSZ][MSZ]);
+
 private:
-    // spawning helpers
+    // Spawning helpers
     bool IsFreeForNPC(int map[MSZ][MSZ], int r, int c);
     bool RandomFreeCellInRegion(int map[MSZ][MSZ], int r0, int r1, int c0, int c1,
         int& outR, int& outC, int maxTries = 4000);
 
-    // commander “brain”
+    // Commander “brain”
     void RecomputeTeamVisibility(int map[MSZ][MSZ]);
     std::pair<int, int> FindSafePositionBFS(int map[MSZ][MSZ], double smap[MSZ][MSZ],
         int startR, int startC, int searchRadius = 14);
@@ -59,10 +66,14 @@ private:
 
     std::vector<std::unique_ptr<NPC>> members;
 
-    // commander’s combined visibility
+    // Commander’s combined visibility
     double commanderVis[MSZ][MSZ] = { 0.0 };
 
-    // known depots
+    // Known depots
     std::vector<std::pair<int, int>> enemyAmmoDepots, enemyMedDepots;
     std::vector<std::pair<int, int>> ownAmmoDepots, ownMedDepots;
+
+    // New: opponent, sightings (per tick)
+    TeamSquad* opponent = nullptr;
+    std::vector<std::pair<int, int>> lastSightings;
 };

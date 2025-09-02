@@ -44,8 +44,6 @@ Grenade* pg = nullptr;
 
 // Register depot and record its owner
 static void RegisterDepotCell(Team team, int r, int c, bool isAmmo) {
-    std::cout << "SETUP: registering " << (isAmmo ? "ammo" : "med") << " depot for Team " 
-              << (team == TEAM_A ? "A" : "B") << " at (" << r << "," << c << ")" << std::endl;
     if (team == TEAM_A) g_cellsTeamA.insert(CellKey(r, c));
     else g_cellsTeamB.insert(CellKey(r, c));
     if (isAmmo) g_ammoDepots[team].push_back({ r,c });
@@ -54,7 +52,6 @@ static void RegisterDepotCell(Team team, int r, int c, bool isAmmo) {
 
 // Random scatter function
 static void PlaceRandomCells(int m[MSZ][MSZ], int cellValue, int count) {
-    std::cout << "SETUP: placing " << count << " cells of type " << cellValue << std::endl;
     int placed = 0;
     while (placed < count) {
         int r = rand() % MSZ;
@@ -64,14 +61,12 @@ static void PlaceRandomCells(int m[MSZ][MSZ], int cellValue, int count) {
             placed++;
         }
     }
-    std::cout << "SETUP: placed " << placed << " cells of type " << cellValue << std::endl;
 }
 
 // Place depot in subregion
 static void PlaceDepotInRegion(int m[MSZ][MSZ], int depotType,
     int r0, int r1, int c0, int c1)
 {
-    std::cout << "SETUP: placing depot type " << depotType << " in region (" << r0 << "," << c0 << ") to (" << r1 << "," << c1 << ")" << std::endl;
     const int margin = 2;
     r0 = std::max(r0 + margin, 0);
     c0 = std::max(c0 + margin, 0);
@@ -80,24 +75,21 @@ static void PlaceDepotInRegion(int m[MSZ][MSZ], int depotType,
     for (int tries = 0; tries < 1000; ++tries) {
         int r = r0 + rand() % (r1 - r0 + 1);
         int c = c0 + rand() % (c1 - c0 + 1);
-        if (m[r][c] == SPACE) { 
-            m[r][c] = depotType; 
-            std::cout << "SETUP: depot type " << depotType << " placed at (" << r << "," << c << ")" << std::endl;
-            return; 
+        if (m[r][c] == SPACE) {
+            m[r][c] = depotType;
+            return;
         }
     }
     for (int r = r0; r <= r1; ++r)
         for (int c = c0; c <= c1; ++c)
-            if (m[r][c] == SPACE) { 
-                m[r][c] = depotType; 
-                std::cout << "SETUP: depot type " << depotType << " placed at (" << r << "," << c << ") (fallback)" << std::endl;
-                return; 
+            if (m[r][c] == SPACE) {
+                m[r][c] = depotType;
+                return;
             }
 }
 
 // Setup terrain and depots
 static void SetupMap() {
-    std::cout << "=== SETUP: Initializing map " << MSZ << "x" << MSZ << " ===" << std::endl;
     for (int i = 0; i < MSZ; i++) {
         for (int j = 0; j < MSZ; j++) {
             map[i][j] = SPACE;
@@ -137,21 +129,10 @@ B_AMMO_DONE:;
         for (int c = mid; c < MSZ; ++c)
             if (map[r][c] == DEPOT_MED) { RegisterDepotCell(TEAM_B, r, c, false); goto B_MED_DONE; }
 B_MED_DONE:;
-
-    assert(g_ammoDepots[TEAM_A].size() == 1);
-    assert(g_medDepots[TEAM_A].size() == 1);
-    assert(g_ammoDepots[TEAM_B].size() == 1);
-    assert(g_medDepots[TEAM_B].size() == 1);
-    
-    std::cout << "SETUP: Team A depots - Ammo: (" << g_ammoDepots[TEAM_A][0].first << "," << g_ammoDepots[TEAM_A][0].second 
-              << "), Med: (" << g_medDepots[TEAM_A][0].first << "," << g_medDepots[TEAM_A][0].second << ")" << std::endl;
-    std::cout << "SETUP: Team B depots - Ammo: (" << g_ammoDepots[TEAM_B][0].first << "," << g_ammoDepots[TEAM_B][0].second 
-              << "), Med: (" << g_medDepots[TEAM_B][0].first << "," << g_medDepots[TEAM_B][0].second << ")" << std::endl;
 }
 
 // Spawn teams
 static void SetupTeams() {
-    std::cout << "=== SETUP: Creating teams ===" << std::endl;
     g_teamA.CreateStandardSquad();
     g_teamB.CreateStandardSquad();
     int mid = MSZ / 2;
@@ -159,12 +140,10 @@ static void SetupTeams() {
     bool okB = g_teamB.SpawnAllInRegion(map, 0, MSZ - 1, mid, MSZ - 1);
     assert(okA && "Failed to spawn Team A");
     assert(okB && "Failed to spawn Team B");
-    std::cout << "SETUP: Teams spawned successfully" << std::endl;
 }
 
 // Attach environment
 static void AttachEnvToTeams() {
-    std::cout << "SETUP: Attaching environment maps to teams" << std::endl;
     g_teamA.AttachEnvironmentToAll(map, smap);
     g_teamB.AttachEnvironmentToAll(map, smap);
 }
@@ -172,29 +151,25 @@ static void AttachEnvToTeams() {
 // Initialization
 static void init() {
     srand(12345); // Deterministic seed for testing
-    std::cout << "=== INITIALIZATION START ===" << std::endl;
     glClearColor(0.5, 0.7, 0.4, 0.0);
     glOrtho(0, MSZ, 0, MSZ, -1, 1);
 
     SetupMap();
     SetupTeams();
     AttachEnvToTeams();
+
+    // NEW: wire opponents
+    g_teamA.SetOpponent(&g_teamB);
+    g_teamB.SetOpponent(&g_teamA);
+
     g_teamA.SetOwnDepots(g_ammoDepots[TEAM_A], g_medDepots[TEAM_A]);
     g_teamA.SetKnownEnemyDepots(g_ammoDepots[TEAM_B], g_medDepots[TEAM_B]);
     g_teamB.SetOwnDepots(g_ammoDepots[TEAM_B], g_medDepots[TEAM_B]);
     g_teamB.SetKnownEnemyDepots(g_ammoDepots[TEAM_A], g_medDepots[TEAM_A]);
-    
-    std::cout << "=== INITIALIZATION COMPLETE ===" << std::endl;
-    std::cout << "Controls: T=Test Damage, A=Test Low Ammo, S=Toggle Security Map, R=Rebuild, Q=Quit" << std::endl;
 }
 
 // Draw entire map
 static void ShowMap() {
-    static int mapDrawCount = 0;
-    if (++mapDrawCount % 500 == 0) { // Log every 500 map draws
-        std::cout << "MAP: drawing map " << MSZ << "x" << MSZ << ", security map: " << (showSecurityMap ? "ON" : "OFF") << std::endl;
-    }
-    
     for (int i = 0; i < MSZ; i++) {
         for (int j = 0; j < MSZ; j++) {
             switch (map[i][j]) {
@@ -247,30 +222,19 @@ static void ShowMap() {
 
 // Draw HUD with team status
 static void DrawHUD() {
-    static int hudDrawCount = 0;
-    if (++hudDrawCount % 400 == 0) { // Log every 400 HUD draws
-        std::cout << "HUD: drawing status display" << std::endl;
-    }
-    
     glMatrixMode(GL_PROJECTION);
     glPushMatrix();
     glLoadIdentity();
     glOrtho(0, W, 0, H, -1, 1);
-    
     glMatrixMode(GL_MODELVIEW);
     glPushMatrix();
     glLoadIdentity();
-    
-    // Team A status (left side) - simplified without text rendering
-    glColor3d(0.85, 0.15, 0.15);
-    glRasterPos2d(10, H - 30);
-    // Note: Text rendering removed due to GLUT compatibility issues
-    
+
+    // Team A status (left side) - rectangles for HP/Ammo
     auto warriorsA = g_teamA.GetWarriors();
     int y = H - 50;
     for (size_t i = 0; i < warriorsA.size(); ++i) {
         if (warriorsA[i]->IsAlive()) {
-            // Draw colored rectangles instead of text for HP/Ammo status
             glColor3d(0.9, 0.1, 0.1);
             glBegin(GL_QUADS);
             glVertex2d(20, y);
@@ -278,7 +242,7 @@ static void DrawHUD() {
             glVertex2d(20 + warriorsA[i]->HP() / 10.0, y + 10);
             glVertex2d(20, y + 10);
             glEnd();
-            
+
             glColor3d(0.1, 0.9, 0.1);
             glBegin(GL_QUADS);
             glVertex2d(20, y + 12);
@@ -286,21 +250,16 @@ static void DrawHUD() {
             glVertex2d(20 + warriorsA[i]->Ammo() / 2.0, y + 22);
             glVertex2d(20, y + 22);
             glEnd();
-            
+
             y -= 30;
         }
     }
-    
-    // Team B status (right side) - simplified without text rendering
-    glColor3d(0.15, 0.35, 0.95);
-    glRasterPos2d(W - 100, H - 30);
-    // Note: Text rendering removed due to GLUT compatibility issues
-    
+
+    // Team B status (right side)
     auto warriorsB = g_teamB.GetWarriors();
     y = H - 50;
     for (size_t i = 0; i < warriorsB.size(); ++i) {
         if (warriorsB[i]->IsAlive()) {
-            // Draw colored rectangles instead of text for HP/Ammo status
             glColor3d(0.1, 0.1, 0.9);
             glBegin(GL_QUADS);
             glVertex2d(W - 90, y);
@@ -308,7 +267,7 @@ static void DrawHUD() {
             glVertex2d(W - 90 + warriorsB[i]->HP() / 10.0, y + 10);
             glVertex2d(W - 90, y + 10);
             glEnd();
-            
+
             glColor3d(0.1, 0.9, 0.1);
             glBegin(GL_QUADS);
             glVertex2d(W - 90, y + 12);
@@ -316,20 +275,20 @@ static void DrawHUD() {
             glVertex2d(W - 90 + warriorsB[i]->Ammo() / 2.0, y + 22);
             glVertex2d(W - 90, y + 22);
             glEnd();
-            
+
             y -= 30;
         }
     }
-    
-    // Commander mode indicator - simplified
+
+    // Commander mode indicator (simple bar)
     glColor3d(1.0, 1.0, 1.0);
     glBegin(GL_QUADS);
-    glVertex2d(W/2 - 50, H - 30);
-    glVertex2d(W/2 + 50, H - 30);
-    glVertex2d(W/2 + 50, H - 20);
-    glVertex2d(W/2 - 50, H - 20);
+    glVertex2d(W / 2 - 50, H - 30);
+    glVertex2d(W / 2 + 50, H - 30);
+    glVertex2d(W / 2 + 50, H - 20);
+    glVertex2d(W / 2 - 50, H - 20);
     glEnd();
-    
+
     glMatrixMode(GL_PROJECTION);
     glPopMatrix();
     glMatrixMode(GL_MODELVIEW);
@@ -338,11 +297,6 @@ static void DrawHUD() {
 
 // Display
 static void display() {
-    static int displayCount = 0;
-    if (++displayCount % 600 == 0) { // Log every 600 displays
-        std::cout << "DISPLAY: rendering frame " << displayCount << std::endl;
-    }
-    
     glClear(GL_COLOR_BUFFER_BIT);
     ShowMap();
     if (pg) pg->Show();
@@ -356,12 +310,10 @@ static void display() {
 static void idle() {
     static int frameCount = 0;
     frameCount++;
-    
+
     if (pg) {
         pg->Explode(map);
-        if (frameCount % 60 == 0) { // Log every 60 frames
-            std::cout << "IDLE: Frame " << frameCount << " - updating teams and map" << std::endl;
-        }
+        pg->CreateScurityMap(map, smap);
     }
     g_teamA.Update(map, smap);
     g_teamB.Update(map, smap);
@@ -373,7 +325,6 @@ static void mouseClick(int button, int state, int x, int y) {
     if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN) {
         double xx = MSZ * x / static_cast<double>(W);
         double yy = MSZ * (H - y - 1) / static_cast<double>(H);
-        std::cout << "MOUSE: Left click at (" << xx << "," << yy << ") - creating grenade" << std::endl;
         pg = new Grenade(xx, yy);
         pg->Explode(map);
     }
@@ -383,30 +334,29 @@ static void mouseClick(int button, int state, int x, int y) {
 static void keyboard(unsigned char key, int, int) {
     switch (key) {
     case 't': case 'T': {
-        std::cout << "KEY: T pressed - testing damage on Team A Warrior 1" << std::endl;
         auto warriors = g_teamA.GetWarriors();
         if (!warriors.empty() && warriors[0]->IsAlive()) warriors[0]->TestDamage();
     } break;
     case 'a': case 'A': {
-        std::cout << "KEY: A pressed - testing low ammo on Team A Warrior 1" << std::endl;
         auto warriors = g_teamA.GetWarriors();
         if (!warriors.empty() && warriors[0]->IsAlive()) warriors[0]->TestLowAmmo();
     } break;
     case 's': case 'S':
         showSecurityMap = !showSecurityMap;
-        std::cout << "KEY: S pressed - Security map: " << (showSecurityMap ? "ON" : "OFF") << std::endl;
         break;
     case 'r': case 'R':
-        std::cout << "KEY: R pressed - rebuilding map and teams" << std::endl;
         SetupMap(); SetupTeams(); AttachEnvToTeams();
+        // NEW: re-wire opponents after rebuild
+        g_teamA.SetOpponent(&g_teamB);
+        g_teamB.SetOpponent(&g_teamA);
+
         g_teamA.SetOwnDepots(g_ammoDepots[TEAM_A], g_medDepots[TEAM_A]);
         g_teamA.SetKnownEnemyDepots(g_ammoDepots[TEAM_B], g_medDepots[TEAM_B]);
         g_teamB.SetOwnDepots(g_ammoDepots[TEAM_B], g_medDepots[TEAM_B]);
         g_teamB.SetKnownEnemyDepots(g_ammoDepots[TEAM_A], g_medDepots[TEAM_A]);
         break;
-    case 'q': case 'Q': case 27: 
-        std::cout << "KEY: Q/ESC pressed - exiting" << std::endl;
-        exit(0); 
+    case 'q': case 'Q': case 27:
+        exit(0);
         break;
     }
 }
@@ -415,15 +365,17 @@ static void keyboard(unsigned char key, int, int) {
 static void menu(int option) {
     if (option == 1) {
         showSecurityMap = true;
-        std::cout << "MENU: Show Security Map selected" << std::endl;
     }
     else if (option == 2) {
         showSecurityMap = false;
-        std::cout << "MENU: Hide Security Map selected" << std::endl;
     }
     else if (option == 3) {
-        std::cout << "MENU: Rebuild Map + Teams selected" << std::endl;
         SetupMap(); SetupTeams(); AttachEnvToTeams();
+
+        // NEW: re-wire opponents after rebuild
+        g_teamA.SetOpponent(&g_teamB);
+        g_teamB.SetOpponent(&g_teamA);
+
         g_teamA.SetOwnDepots(g_ammoDepots[TEAM_A], g_medDepots[TEAM_A]);
         g_teamA.SetKnownEnemyDepots(g_ammoDepots[TEAM_B], g_medDepots[TEAM_B]);
         g_teamB.SetOwnDepots(g_ammoDepots[TEAM_B], g_medDepots[TEAM_B]);
@@ -432,7 +384,6 @@ static void menu(int option) {
 }
 
 int main(int argc, char* argv[]) {
-    std::cout << "=== MAIN: Starting AI Battle Simulation ===" << std::endl;
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_RGB | GLUT_DOUBLE);
     glutInitWindowSize(W, H);
@@ -450,9 +401,7 @@ int main(int argc, char* argv[]) {
     glutAddMenuEntry("Rebuild Map + Teams", 3);
     glutAttachMenu(GLUT_RIGHT_BUTTON);
 
-    std::cout << "=== MAIN: Initializing OpenGL and game systems ===" << std::endl;
     init();
-    std::cout << "=== MAIN: Entering main loop ===" << std::endl;
     glutMainLoop();
     return 0;
 }

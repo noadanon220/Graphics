@@ -18,8 +18,6 @@
 #include <iostream>
 
 static const char* TeamName(Team t) {
-    // עובד גם כשהגדרת Team היא enum class וגם כ-enum רגיל,
-    // בהנחה ש-TEAM_A=0, TEAM_B=1 (כפי שמקובל בפרויקט).
     return (static_cast<int>(t) == 0 ? "A" : "B");
 }
 
@@ -27,9 +25,7 @@ TeamSquad::TeamSquad(Team id) : teamId(id), frameCounter(0) {
     std::cout << "TEAM " << TeamName(teamId) << ": ctor" << std::endl;
 }
 
-Team TeamSquad::GetId() const {
-    return teamId;
-}
+Team TeamSquad::GetId() const { return teamId; }
 
 void TeamSquad::CreateStandardSquad() {
     members.clear();
@@ -83,7 +79,7 @@ void TeamSquad::Draw() const {
 void TeamSquad::Update(int /*map*/[MSZ][MSZ], double /*smap*/[MSZ][MSZ]) {
     for (auto& m : members) m->DoSomeWork();
 
-    // Commander logic ~every 12 frames
+    // Commander + intel/combat every ~12 frames
     if ((frameCounter++ % 12) == 0) {
         int (*env)[MSZ] = nullptr;
         double (*rs)[MSZ] = nullptr;
@@ -94,6 +90,8 @@ void TeamSquad::Update(int /*map*/[MSZ][MSZ], double /*smap*/[MSZ][MSZ]) {
         }
         if (env && rs) {
             RecomputeTeamVisibility(env);
+            CollectSightings(env);      // collect enemy sightings
+            ResolveCombat(env, rs);     // apply combat resolution & update risk
             CommanderBrainTick(env, rs);
         }
     }
@@ -137,6 +135,127 @@ void TeamSquad::SetOwnDepots(const std::vector<std::pair<int, int>>& ammo,
     const std::vector<std::pair<int, int>>& med) {
     ownAmmoDepots = ammo;
     ownMedDepots = med;
+}
+
+void TeamSquad::SetOpponent(TeamSquad* op) { opponent = op; }
+
+std::vector<std::pair<int, int>> TeamSquad::GetAlivePositions() const {
+    std::vector<std::pair<int, int>> out;
+    for (auto& m : members) {
+        // Commander/Medic/Supplier are considered "alive positions" for sighting
+        if (auto* w = dynamic_cast<WarriorNPC*>(m.get())) {
+            if (w->IsAlive()) out.emplace_back(w->Row(), w->Col());
+        }
+        else if (auto* c = dynamic_cast<CommanderNPC*>(m.get())) {
+            out.emplace_back(c->Row(), c->Col());
+        }
+        else if (auto* md = dynamic_cast<MedicNPC*>(m.get())) {
+            out.emplace_back(md->Row(), md->Col());
+        }
+        else if (auto* sp = dynamic_cast<SupplierNPC*>(m.get())) {
+            out.emplace_back(sp->Row(), sp->Col());
+        }
+    }
+    return out;
+}
+
+// Local line-of-fire (team utility)
+static bool LineOfFireTeam(int map[MSZ][MSZ], int r0, int c0, int r1, int c1) {
+    int dr = std::abs(r1 - r0), dc = std::abs(c1 - c0);
+    int sr = (r0 < r1) ? 1 : -1, sc = (c0 < c1) ? 1 : -1;
+    int err = dc - dr, r = r0, c = c0;
+    while (!(r == r1 && c == c1)) {
+        int e2 = 2 * err;
+        if (e2 > -dr) { err -= dr; c += sc; }
+        if (e2 < dc) { err += dc; r += sr; }
+        if (r == r1 && c == c1) break;
+        if (r < 0 || r >= MSZ || c < 0 || c >= MSZ) return false;
+        if (BlocksFire(map[r][c])) return false;
+    }
+    return true;
+}
+
+// Add risk along a line (used for gun fire)
+static void AddRiskAlongLine(int map[MSZ][MSZ], double smap[MSZ][MSZ], int r0, int c0, int r1, int c1) {
+    int dr = std::abs(r1 - r0), dc = std::abs(c1 - c0);
+    int sr = (r0 < r1) ? 1 : -1, sc = (c0 < c1) ? 1 : -1;
+    int err = dc - dr, r = r0, c = c0;
+    int steps = 0;
+    while (!(r == r1 && c == c1) && steps < 200) {
+        if (!BlocksMovement(map[r][c])) smap[r][c] += SECURITY_VALUE * 0.5;
+        int e2 = 2 * err;
+        if (e2 > -dr) { err -= dr; c += sc; }
+        if (e2 < dc) { err += dc; r += sr; }
+        steps++;
+    }
+}
+
+void TeamSquad::CollectSightings(int map[MSZ][MSZ]) {
+    lastSightings.clear();
+    if (!opponent) return;
+    auto enemies = opponent->GetAlivePositions();
+    if (enemies.empty()) return;
+
+    // Each member reports enemy cells it can see (via visibility map)
+    for (auto& m : members) {
+        double vmap[MSZ][MSZ];
+        BuildVisibilityForUnit(map, m->Row(), m->Col(), vmap, 20);
+        for (auto& e : enemies) {
+            int er = e.first, ec = e.second;
+            if (er >= 0 && er < MSZ && ec >= 0 && ec < MSZ && vmap[er][ec] > 0.0) {
+                lastSightings.emplace_back(er, ec);
+            }
+        }
+    }
+    std::sort(lastSightings.begin(), lastSightings.end());
+    lastSightings.erase(std::unique(lastSightings.begin(), lastSightings.end()), lastSightings.end());
+}
+
+void TeamSquad::ResolveCombat(int map[MSZ][MSZ], double smap[MSZ][MSZ]) {
+    if (!opponent) return;
+
+    // Enemy living warriors
+    std::vector<WarriorNPC*> enemyWarriors = opponent->GetWarriors();
+    enemyWarriors.erase(std::remove_if(enemyWarriors.begin(), enemyWarriors.end(),
+        [](WarriorNPC* w) { return !w->IsAlive(); }), enemyWarriors.end());
+
+    // Each warrior tries to shoot/grenade the nearest enemy within range + LOS
+    for (auto* w : GetWarriors()) {
+        if (!w->IsAlive() || !w->CanFight()) continue;
+
+        // Find nearest enemy warrior
+        WarriorNPC* best = nullptr; int bestD = 1e9;
+        for (auto* ew : enemyWarriors) {
+            int d = std::abs(w->Row() - ew->Row()) + std::abs(w->Col() - ew->Col());
+            if (d < bestD) { bestD = d; best = ew; }
+        }
+        if (!best) continue;
+
+        // Rifle fire
+        if (w->InFireRange(best->Row(), best->Col()) &&
+            LineOfFireTeam(map, w->Row(), w->Col(), best->Row(), best->Col()))
+        {
+            if (w->Ammo() > 0) {
+                w->ConsumeAmmo(1);
+                best->Damage(BULLET_DAMAGE);
+                AddRiskAlongLine(map, smap, w->Row(), w->Col(), best->Row(), best->Col());
+                continue;
+            }
+        }
+
+        // Grenade (simplified direct damage if LOS)
+        if (w->InGrenadeRange(best->Row(), best->Col()) &&
+            LineOfFireTeam(map, w->Row(), w->Col(), best->Row(), best->Col()))
+        {
+            w->ThrowGrenadeAt(best->Row(), best->Col());
+            best->Damage(GRENADE_DAMAGE);
+            for (int rr = -2; rr <= 2; ++rr)
+                for (int cc = -2; cc <= 2; ++cc) {
+                    int r = best->Row() + rr, c = best->Col() + cc;
+                    if (r >= 0 && r < MSZ && c >= 0 && c < MSZ) smap[r][c] += SECURITY_VALUE * 10.0;
+                }
+        }
+    }
 }
 
 void TeamSquad::RecomputeTeamVisibility(int map[MSZ][MSZ]) {
@@ -215,7 +334,7 @@ void TeamSquad::CommanderBrainTick(int map[MSZ][MSZ], double smap[MSZ][MSZ]) {
     if (wounded && !ownMedDepots.empty()) {
         if (auto* med = GetMedic()) {
             auto dep = ownMedDepots[0];
-            med->SetMission(dep.first, dep.second, wounded->Row(), wounded->Col(), 10.0);
+            med->SetMission(dep.first, dep.second, wounded->Row(), wounded->Col(), 10.0, wounded);
             med->setCurrentState(new MedicGoToDepot());
             med->getCurrentState()->OnEnter(med);
         }
@@ -223,7 +342,7 @@ void TeamSquad::CommanderBrainTick(int map[MSZ][MSZ], double smap[MSZ][MSZ]) {
     if (lowAmmo && !ownAmmoDepots.empty()) {
         if (auto* sup = GetSupplier()) {
             auto dep = ownAmmoDepots[0];
-            sup->SetMission(dep.first, dep.second, lowAmmo->Row(), lowAmmo->Col(), 10.0);
+            sup->SetMission(dep.first, dep.second, lowAmmo->Row(), lowAmmo->Col(), 10.0, lowAmmo);
             sup->setCurrentState(new SupplierGoToDepot());
             sup->getCurrentState()->OnEnter(sup);
         }
@@ -234,11 +353,26 @@ void TeamSquad::CommanderBrainTick(int map[MSZ][MSZ], double smap[MSZ][MSZ]) {
 
     double cRisk = smap[cmd->Row()][cmd->Col()];
     bool commanderInDanger = (cRisk > 0.1);
-    bool hasTarget = !enemyAmmoDepots.empty();
+    bool hasTarget = (!enemyAmmoDepots.empty()) || (!GetSightings().empty());
     bool shouldAttack = (alive >= 1) && !commanderInDanger && hasTarget;
 
     if (shouldAttack) {
-        auto goal = enemyAmmoDepots[0];
+        // Prefer sightings; fallback to enemy ammo depot
+        std::pair<int, int> goal;
+        if (!GetSightings().empty()) {
+            auto s = GetSightings();
+            auto pick = s[0];
+            int bestD = std::abs(cmd->Row() - pick.first) + std::abs(cmd->Col() - pick.second);
+            for (auto& p : s) {
+                int d = std::abs(cmd->Row() - p.first) + std::abs(cmd->Col() - p.second);
+                if (d < bestD) { bestD = d; pick = p; }
+            }
+            goal = pick;
+        }
+        else {
+            goal = enemyAmmoDepots[0];
+        }
+
         const double RISK_W = 6.0, VIS_W = 3.0;
 
         for (auto* w : warriors) {
@@ -301,7 +435,6 @@ void TeamSquad::CommanderBrainTick(int map[MSZ][MSZ], double smap[MSZ][MSZ]) {
             if (!w->IsAlive()) continue;
             auto pos = FindSafePositionBFS(map, smap, w->Row(), w->Col(), 10);
             w->SetMission(pos.first, pos.second, WarriorNPC::MOVE_TO, 10.0);
-            // זה בטוח עכשיו כי WarriorIdle מוגדר בהדר למטה
             if (!w->getCurrentState() || dynamic_cast<WarriorIdle*>(w->getCurrentState()) == nullptr) {
                 w->setCurrentState(new WarriorMoveTo());
                 w->getCurrentState()->OnEnter(w);
