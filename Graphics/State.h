@@ -1,15 +1,12 @@
-// ============== State.h ==============
-#ifndef STATE_H
-#define STATE_H
+#pragma once
 
-class Character;
+class NPC;
 
+// Base state class for finite state machines
 class State {
 public:
-    virtual ~State() {}
-    virtual void OnEnter(Character* character) = 0;
-    virtual void Update(Character* character) = 0;
-    virtual void OnExit(Character* character) = 0;
+    virtual ~State() = default;
+    virtual void OnEnter(NPC* np) = 0;     // Called when state becomes active
+    virtual void Transition(NPC* np) = 0;  // Called when state should switch
+    virtual void OnExit(NPC* np) = 0;      // Called just before leaving state
 };
-
-#endif
